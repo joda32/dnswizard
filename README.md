@@ -152,56 +152,39 @@ dnswizard serve -r '*=127.0.0.1' --except github.com,*.docker.io
 
 Run `dnswizard serve --help` for the full flag list.
 
-## Migrating an older setup
+## Importing legacy configs
 
-An INI record file — a section per record type, one `domain=value` pair per
-line — converts directly:
+If you have an INI record file (a section per record type, one `domain=value`
+pair per line), it converts directly:
 
 ```sh
 dnswizard config import records.ini -o dnswizard.yaml
 ```
 
-Flag equivalents, if you are coming from a Python-era invocation:
+### Behaviour by design
 
-| Old flag | dnswizard |
-|---|---|
-| `--fakeip 127.0.0.1` | `-r '*=127.0.0.1'` |
-| `--fakeip X --fakedomains a.com` | `-r 'a.com=X' -r '*.a.com=X'` |
-| `--fakeipv6 ::1` | `-r 'AAAA:*=::1'` |
-| `--fakemail mail.x.com` | `-r 'MX:*=mail.x.com'` |
-| `--fakealias www.x.com` | `-r 'CNAME:*=www.x.com'` |
-| `--fakens ns.x.com` | `-r 'NS:*=ns.x.com'` |
-| `--file records.ini` | `-c dnswizard.yaml` (after `config import`) |
-| `--fakedomains a.com` | `--only a.com` |
-| `--truedomains a.com` | `--except a.com` |
-| `--nameservers 4.2.2.1#53#tcp` | `-u tcp://4.2.2.1:53` (old syntax still parses) |
-| `-i 0.0.0.0 -p 5353` | `-l 0.0.0.0:5353` |
-| `-t` / `--tcp` | not needed — UDP and TCP are both served |
-| `-6` / `--ipv6` | not needed — `-l '[::1]:53'` |
-| `--logfile FILE` | `--log-file FILE` |
-| `-q` | `-q` (hides the banner) |
-
-### Behaviour that changed on purpose
-
-- **Wildcards are stricter.** The old matcher compared only as many labels as
-  the shorter of pattern and query, so `example.com` silently matched every
-  subdomain and `*.example.com` matched the bare apex. Here those are two
-  distinct patterns. Add both if you want both.
-- **UDP and TCP run together**, rather than one or the other.
-- **Upstreams fail over.** Picking one at random with no retry meant a dead
-  server caused intermittent failures. Truncated UDP replies are also retried
-  over TCP automatically.
+- **Wildcards are strict.** `example.com` matches only the bare apex, not its
+  subdomains. `*.example.com` matches subdomains but not the apex itself. Add
+  both patterns if you want both. A leading `*` spans one or more labels; a
+  `*` in any other position matches exactly one.
+- **UDP and TCP are both served** on every listen address. No flag needed to
+  choose between them.
+- **Upstreams fail over in order.** If the first upstream is unreachable the
+  next is tried, and truncated UDP replies are automatically retried over TCP
+  against the same server.
 - **Locally known names do not leak.** If a name has records of some type but
   not the queried one, dnswizard answers NODATA instead of forwarding an
-  internal name to a public resolver. Set `nodata_for_known_names: false` for
-  the old behaviour.
+  internal name to a public resolver. Set `nodata_for_known_names: false` to
+  disable.
 - **CNAMEs are followed.** An A/AAAA query for a name with a local CNAME
   returns the alias plus the target's addresses, resolving the target upstream
   if it is not local. Set `chase_cname: false` to disable.
-- **New upstream transports.** `tcp://` and DNS-over-TLS via
-  `tls://1.1.1.1:853#cloudflare-dns.com`.
-- **`fallback`.** Unmatched queries can answer NXDOMAIN, REFUSED or empty
-  instead of being proxied — useful for an offline lab.
+- **Multiple upstream transports.** Plain UDP/TCP, forced TCP via `tcp://`, and
+  DNS-over-TLS via `tls://1.1.1.1:853#cloudflare-dns.com`. Legacy
+  `HOST#PORT#PROTOCOL` syntax is also accepted.
+- **Configurable fallback.** Unmatched queries can be proxied upstream
+  (default), or answered with NXDOMAIN, REFUSED, or an empty response — useful
+  for an isolated lab.
 
 ## Development
 

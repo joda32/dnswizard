@@ -62,6 +62,73 @@ is more useful over the wire than in a terminal.
 - Keep the DNS hot path free of new locks — the atomic pointer swap in
   `server.runtime` should stay the only synchronisation.
 
+## File staging over DNS
+
+Serve chunks of a local file through DNS responses, allowing data to be
+transferred purely via DNS queries. Inspired by dnschef-ng's implementation of
+the same idea.
+
+### How it works
+
+A record's value points to a file instead of an address. The chunk index is
+extracted from digits in the queried subdomain — `ns0.example.com` returns
+chunk 0, `test12.example.com` returns chunk 12. Supported record types:
+
+- **A** — 4 bytes per chunk, packed into one IPv4 address. Last chunk
+  zero-padded if short.
+- **AAAA** — 16 bytes per chunk, same padding.
+- **TXT** — base64-encoded chunks. Supports a `response_format` template and a
+  `response_prefix_pool` (list of strings like `"atlassian-domain-verification="`
+  that rotate randomly into the response), so staged data blends in with
+  legitimate domain-verification TXT records.
+
+### Config sketch
+
+```yaml
+records:
+  - name: "*.staging.lab"
+    type: A
+    file: ./payload.bin
+    chunk_size: 4
+
+  - name: "*.exfil.lab"
+    type: TXT
+    file: ./data.bin
+    chunk_size: 189
+    response_format: "{prefix}{chunk}"
+    response_prefix_pool:
+      - "atlassian-domain-verification="
+      - "docusign="
+```
+
+### Design questions
+
+- **Chunk extraction rule.** dnschef-ng collects all digits from the first label
+  (`qname.split('.')[0]`) and joins them. Simple but surprising when a label
+  like `test1a2` silently becomes chunk 12. We could require a specific position
+  (leading digits only, or a `{n}` placeholder in the pattern) for clarity.
+- **File lifetime.** Read once at config load (cheap, predictable, needs reload
+  to pick up changes) or on every query (live, but disk I/O on the DNS hot
+  path). Read-once with a hot-reload re-read is probably the right call.
+- **End-of-file signalling.** The client needs to know when it has all the
+  chunks. Options: return NXDOMAIN / empty answer for out-of-range indices, or
+  include a total-chunks count somewhere (e.g. a TXT record at a well-known
+  name like `_meta.staging.lab`).
+- **Integration with the record store.** File-backed records are conceptually a
+  different kind of value — they need the file path, chunk size, and optional
+  format/prefix fields. This probably means extending `records.Record` with an
+  optional `FileStaging` struct rather than overloading the `Value` field.
+
+### Notes
+
+- This is primarily a pentest/red-team feature (data staging and exfiltration
+  over DNS). Not directly useful for lab/dev DNS, but it's part of the tool's
+  heritage and worth supporting.
+- The TXT prefix rotation is specifically an evasion technique — it makes
+  responses look like common domain-ownership verification records.
+- A Go implementation can memory-map the file or read it into a byte slice once,
+  avoiding the per-query disk I/O that dnschef-ng does.
+
 ## Unsorted
 
 Things that came up while porting, not yet thought through.

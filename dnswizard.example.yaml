@@ -1,0 +1,61 @@
+# dnswizard configuration
+#
+# Names are matched most-specific-first: an exact name beats "*.dev.local",
+# which beats "*". A leading "*" matches one or more labels, so
+# "*.dev.local" covers both "api.dev.local" and "v2.api.dev.local".
+
+listen:
+  - 127.0.0.1:53          # bare address binds both UDP and TCP
+  # - udp://0.0.0.0:53    # or pin a single transport
+
+upstream:                 # tried in order, with failover
+  - 1.1.1.1:53
+  - 8.8.8.8:53
+  # - tls://1.1.1.1:853#cloudflare-dns.com   # DNS over TLS
+
+ttl: 60
+timeout: 3s
+
+# What to do with queries that match no record:
+#   proxy (forward upstream) | nxdomain | refused | empty
+fallback: proxy
+
+# Answer NODATA instead of forwarding when a name is known locally but has no
+# record of the queried type. Keeps internal names off the public internet.
+nodata_for_known_names: true
+
+# Follow locally-defined CNAMEs when answering A/AAAA queries.
+chase_cname: true
+
+# Shorthand for address records: A or AAAA is chosen from the address family.
+hosts:
+  "*.dev.local": 127.0.0.1
+  "api.dev.local":
+    - 10.0.0.10
+    - 10.0.0.11
+  "ipv6.dev.local": "::1"
+
+# Everything else goes here.
+records:
+  - name: "dev.local"
+    type: MX
+    value: mail.dev.local          # preference defaults to 10
+
+  - name: "_sip._tcp.dev.local"
+    type: SRV
+    value: "0 5 5060 sip.dev.local"
+
+  - name: "dev.local"
+    type: TXT
+    value: "v=spf1 -all"
+    ttl: 300
+
+  - name: "old.dev.local"
+    type: CNAME
+    value: api.dev.local
+
+# Limit which names may be faked (mutually exclusive):
+#   only:   fake just these, proxy everything else
+#   except: proxy just these, fake everything else
+# only:
+#   - "*.dev.local"

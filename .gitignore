@@ -1,0 +1,8 @@
+/dnswizard
+/dnswizard.exe
+/dist/
+
+# Local configs and logs, so a lab setup never lands in a commit
+/dnswizard.yaml
+/dnswizard.yml
+*.log

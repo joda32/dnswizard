@@ -15,6 +15,10 @@ application actually resolves.
 Single static binary, no runtime to install. Runs on Linux, macOS, Windows and
 BSD.
 
+<p align="center">
+  <img src="img/DNSWizard_1.gif" alt="dnswizard demo" width="700">
+</p>
+
 ## Install
 
 ```sh
